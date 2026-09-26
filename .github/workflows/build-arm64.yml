@@ -1,11 +1,11 @@
-name: 构建 RAGFlow arm64 镜像
+name: 构建 RAGFlow arm64（最新版）
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "RAGFlow 版本 tag，如 v0.27.2"
-        required: true
-        default: "v0.27.2"
+        description: "RAGFlow 版本 tag（如 v0.27.2），留空则用 main"
+        required: false
+        default: ""
 permissions:
   contents: read
   packages: write
@@ -13,22 +13,37 @@ jobs:
   build-arm64:
     runs-on: ubuntu-24.04-arm
     env:
-      VERSION: ${{ github.event.inputs.version }}
       IMAGE: ghcr.io/${{ github.repository }}
+      VERSION: ${{ github.event.inputs.version || 'nightly' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.VERSION }}
-      - name: 登录 GitHub Container Registry
+          ref: ${{ github.event.inputs.version }}
+          fetch-depth: 0
+          fetch-tags: true
+      - name: 设置 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 登录 ghcr
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: 构建 arm64 base 镜像
+      - name: 编译原生二进制（arm64）
         run: |
-          docker build -f Dockerfile.base -t infiniflow/ragflow-base:${{ env.VERSION }} .
-      - name: 构建并推送 arm64 主镜像
+          ./build.sh --cpp || echo "WARN: build.sh --cpp 失败"
+          ./build.sh --go
+      - name: 构建 ragflow_deps（arm64）
         run: |
-          docker build -f Dockerfile -t ${IMAGE}:${{ env.VERSION }}-arm64 .
-          docker push ${IMAGE}:${{ env.VERSION }}-arm64
+          cd ragflow_deps
+          pip install uv || true
+          uv run python3 download_deps.py || python3 download_deps.py
+          docker build -f Dockerfile -t infiniflow/ragflow_deps .
+          cd ..
+      - name: 构建并推送主镜像（arm64）
+        run: |
+          docker build -f Dockerfile -t ${IMAGE}:${VERSION}-arm64 .
+          docker push ${IMAGE}:${VERSION}-arm64
