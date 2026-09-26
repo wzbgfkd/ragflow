@@ -29,12 +29,13 @@ jobs:
       - name: Download dependencies
         run: |
           pip install huggingface_hub nltk
+          cd ragflow_deps
           python3 download_deps.py
 
       # 步骤 2: 构建 ARM64 的 deps 基础镜像
       - name: Build deps image
         run: |
-          docker build -f Dockerfile.deps -t infiniflow/ragflow_deps:arm64 .
+          docker build -f ragflow_deps/Dockerfile -t infiniflow/ragflow_deps:arm64 .
       # 在构建主镜像前，替换 FROM 行
       - name: Fix Dockerfile base image reference
         run: |
