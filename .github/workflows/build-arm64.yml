@@ -1,54 +1,34 @@
-name: Build RAGFlow ARM64 Full Stack
-
+name: 构建 RAGFlow arm64 镜像
 on:
   workflow_dispatch:
-
+    inputs:
+      version:
+        description: "RAGFlow 版本 tag，如 v0.27.2"
+        required: true
+        default: "v0.27.2"
+permissions:
+  contents: read
+  packages: write
 jobs:
   build-arm64:
-    runs-on: ubuntu-24.04-arm   # 原生 ARM64 运行器
-    timeout-minutes: 180
-    permissions:
-      contents: read
-      packages: write
-
+    runs-on: ubuntu-24.04-arm
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      IMAGE: ghcr.io/${{ github.repository }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+      - name: 登录 GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # 步骤 1: 下载 ARM64 依赖资源
-      - name: Download dependencies
+      - name: 构建 arm64 base 镜像
         run: |
-          pip install huggingface_hub nltk
-          cd ragflow_deps
-          python3 download_deps.py
-
-      # 步骤 2: 构建 ARM64 的 deps 基础镜像
-      - name: Build deps image
+          docker build -f Dockerfile.base -t infiniflow/ragflow-base:${{ env.VERSION }} .
+      - name: 构建并推送 arm64 主镜像
         run: |
-          cd ragflow_deps
-          docker build -f Dockerfile.deps -t infiniflow/ragflow_deps:arm64 .
-      # 在构建主镜像前，替换 FROM 行
-      - name: Fix Dockerfile base image reference
-        run: |
-          sed -i 's|FROM infiniflow/ragflow_deps:latest|FROM infiniflow/ragflow_deps:arm64|' Dockerfile
-      # 步骤 3: 构建主镜像，显式引用刚刚构建的 ARM64 deps
-      - name: Build main image
-        run: |
-          docker build \
-            -f Dockerfile \
-            -t ghcr.io/${{ github.repository }}:arm64 .
-
-      # 步骤 4: 推送主镜像
-      - name: Push image
-        run: |
-          docker push ghcr.io/${{ github.repository }}:arm64
+          docker build -f Dockerfile -t ${IMAGE}:${{ env.VERSION }}-arm64 .
+          docker push ${IMAGE}:${{ env.VERSION }}-arm64
