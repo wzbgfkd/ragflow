@@ -26,20 +26,30 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: 安装 C++ 编译工具链（build.sh --cpp 需要）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake libpcre2-dev pkg-config
       - name: 登录 ghcr
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: 编译原生二进制（arm64）
+      - name: 下载 Go 链接的原生静态库
         run: |
-          ./build.sh --cpp || echo "WARN: build.sh --cpp 失败"
+          cd ragflow_deps
+          pip install uv || true
+          uv sync || true
+          uv run python3 download_go_deps.py || python3 download_go_deps.py
+          cd ..
+      - name: 编译 C++ 静态库 + Go 二进制（arm64）
+        run: |
+          ./build.sh --cpp
           ./build.sh --go
       - name: 构建 ragflow_deps（arm64）
         run: |
           cd ragflow_deps
-          pip install uv || true
           uv run python3 download_deps.py || python3 download_deps.py
           docker build -f Dockerfile -t infiniflow/ragflow_deps .
           cd ..
